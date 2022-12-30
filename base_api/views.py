@@ -1,6 +1,7 @@
 from django.shortcuts import render
 import requests
 import json
+import mysql.connector
 from django.http import HttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -10,9 +11,28 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import Prclient
 from .serializers import ClientSerializer
-
+from client_api import settings
 
 # Create your views here.
+
+device_id = settings.device_id
+callkit_token = settings.callkit_token
+apns_token = settings.apns_token
+token = settings.token
+x_auth_token = settings.x_auth_token
+
+#connect to existing database
+connection = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="",
+    database="preq",
+    autocommit=True
+)
+
+#cursor for execution of sql query
+cur = connection.cursor(dictionary=True)
+
 
 @api_view(['GET']) #place request type here e.g GET, PUT, POST
 def getRoutes(request):
@@ -24,11 +44,31 @@ def getRoutes(request):
     ]
     return Response(routes)
 
+#for database table created in django
 @api_view(['GET'])
 def getClients(request):
     client = Prclient.objects.all()
     serializer = ClientSerializer(client, many=True)
     return Response(serializer.data)
+
+#for database table created outside django
+@api_view(['GET'])
+def checkClient(request):
+    unique_id = request.GET.get('unique_id', False);
+    if unique_id:
+        query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
+        params = (unique_id,)
+        cur.execute(query, params)
+        result = cur.fetchall()
+
+        if result == []:
+            return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            email = result[0]['CLemail']
+            #return HttpResponse(json.dumps(us_record, indent=4), content_type="application/json")
+            return Response({"email": email, "device id": device_id, "message": "data found"})
+    else:
+        return Response({"status": "error", "message": "data incomplete"}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET'])
 def getClient(request, pk):
@@ -230,27 +270,66 @@ def login_test(request):
     username = request.GET.get('username', False);
     password = request.GET.get('password', False);
 
-    #api url
-    login_url = "https://ubx.univasa.com/api/login/"
+    if username and password:
 
-    #data to passed to url
-    postData = {
-        "username": username,
-        "password": password,
-        "device_id": "645C18B55-26C-4504-AADF-034BDFE1AFEA1",
-        "callkit_token": "BE6CAF775FFC2C1AAD28D9992E467156F044D68D21C59E4973C3A692DACAB03C",
-        "apns_token": "63c7620a2c5ce0a1717850ecb559fb994c57bc6180f49c2e815efab09421f924",
-        "mobile_type": "Ios"
-    }
+        # first API call #
+        #api url
+        login_url = "https://ubx.univasa.com/api/login/"
 
-    #info to be passed to header
-    headers = {'x-auth-token': 'mzFxYakJRhZ8e6nEqMnhvLBVsVpFVj'}
+        #data to passed to url
+        postData = {
+            "username": username,
+            "password": password,
+            "device_id": device_id,
+            "callkit_token": callkit_token,
+            "apns_token": apns_token,
+            "mobile_type": "Ios"
+        }
 
-    response = requests.post(login_url, json=postData, headers=headers)
-    result = response.json()
+        #info to be passed to header
+        headers = {'x-auth-token': x_auth_token}
 
-    acct_id = result['data']['accountid']
-    cust_token = result['data']['token']
+        response = requests.post(login_url, json=postData, headers=headers)
+        result = response.json()
 
-    #return HttpResponse(json.dumps(result), content_type="application/json")
-    return Response({"accountid": acct_id, "customer token": cust_token})
+        acct_id = result['data']['accountid']
+        cust_token = result['data']['token']
+        cust_number = result['data']['telephone_1']
+
+        # end of first API call #
+
+        # second API call #
+        login_url_1 = "https://ubx.univasa.com/admin/origination_rate/"
+
+        postData_1 = {
+            "id":"1",
+            "token":token,
+            "action":"origination_list",
+            "object_where_params": {
+              "pattern": cust_number,
+              "country_id": "",
+              "destination": "",
+              "connectcost": "",
+              "includedseconds": "",
+              "cost": "",
+              "init_inc": "",
+              "inc": "",
+              "reseller_id": "",
+              "pricelist_id": "",
+              "status": ""
+            },
+            "start_limit": "1",
+            "end_limit": "2"
+        }
+
+        response_1 = requests.post(login_url_1, json=postData_1, headers=headers)
+        result_1 = response_1.json()
+
+        cust_rate = result_1['data'][0]['cost']
+
+        # end of second API call #
+
+        #return HttpResponse(json.dumps(result_1, indent=4), content_type="application/json")
+        return Response({"accountid": acct_id, "customer token": cust_token, "call rate": cust_rate, "mobile number": cust_number})
+    else:
+        return Response({"status": "error", "message": "data incomplete"}, status=status.HTTP_404_NOT_FOUND)
