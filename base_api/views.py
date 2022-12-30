@@ -1,5 +1,9 @@
 from django.shortcuts import render
-from rest_framework.decorators import api_view
+import requests
+import json
+from django.http import HttpResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework import status
@@ -198,3 +202,55 @@ print_r($tran);
 print "</pre>";
 '''
 
+#pass multiple parameters into url
+@api_view()
+@permission_classes([AllowAny])
+def getSpClient(request):
+
+    print(request.query_params)
+    print(request.query_params['id'])
+
+    SpClientId = request.GET.get('id', False);
+    SpClientUId = request.GET.get('uid', False);
+
+    try:
+        Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
+    except Prclient.DoesNotExist:
+        return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    client = Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
+    serializer = ClientSerializer(client, many=False)
+    return Response(serializer.data)
+
+@api_view()
+@permission_classes([AllowAny])
+def login_test(request):
+
+    #params from url
+    username = request.GET.get('username', False);
+    password = request.GET.get('password', False);
+
+    #api url
+    login_url = "https://ubx.univasa.com/api/login/"
+
+    #data to passed to url
+    postData = {
+        "username": username,
+        "password": password,
+        "device_id": "645C18B55-26C-4504-AADF-034BDFE1AFEA1",
+        "callkit_token": "BE6CAF775FFC2C1AAD28D9992E467156F044D68D21C59E4973C3A692DACAB03C",
+        "apns_token": "63c7620a2c5ce0a1717850ecb559fb994c57bc6180f49c2e815efab09421f924",
+        "mobile_type": "Ios"
+    }
+
+    #info to be passed to header
+    headers = {'x-auth-token': 'mzFxYakJRhZ8e6nEqMnhvLBVsVpFVj'}
+
+    response = requests.post(login_url, json=postData, headers=headers)
+    result = response.json()
+
+    acct_id = result['data']['accountid']
+    cust_token = result['data']['token']
+
+    #return HttpResponse(json.dumps(result), content_type="application/json")
+    return Response({"accountid": acct_id, "customer token": cust_token})
