@@ -12,9 +12,11 @@ from django.shortcuts import get_object_or_404
 from .models import Prclient
 from .serializers import ClientSerializer
 from client_api import settings
+import xml.etree.ElementTree as ET
 
 # Create your views here.
 
+#needed variables
 device_id = settings.device_id
 callkit_token = settings.callkit_token
 apns_token = settings.apns_token
@@ -51,10 +53,49 @@ def getClients(request):
     serializer = ClientSerializer(client, many=True)
     return Response(serializer.data)
 
-#for database table created outside django
+#for database table created outside django (XML version)
 @api_view(['GET'])
-def checkClient(request):
+def checkClientXl(request):
     unique_id = request.GET.get('unique_id', False);
+
+    if unique_id:
+        query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
+        params = (unique_id,)
+        cur.execute(query, params)
+        result = cur.fetchall()
+
+        if result == []:
+            data = f'<account><status>error</status><message>data not found</message></account>'
+            element = ET.XML(data)
+            ET.indent(element)
+            params = ET.tostring(element, encoding='unicode')
+
+            return HttpResponse(params, content_type="application/xml")
+        else:
+            email = result[0]['CLemail']
+            name = result[0]['CLcompany_name']
+            phone = result[0]['CLphone_number']
+
+            data = f'<account><name>{name}</name><phone>{phone}</phone><email>{email}</email></account>'
+            element = ET.XML(data)
+            ET.indent(element)
+            params = ET.tostring(element, encoding='unicode')
+
+            return HttpResponse(params, content_type="application/xml")
+    else:
+        data = f'<account><status>error</status><message>incomplete data</message></account>'
+        element = ET.XML(data)
+        ET.indent(element)
+        params = ET.tostring(element, encoding='unicode')
+
+        return HttpResponse(params, content_type="application/xml")
+
+
+#for database table created outside django (JSON version)
+@api_view(['GET'])
+def checkClientJs(request):
+    unique_id = request.GET.get('unique_id', False);
+
     if unique_id:
         query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
         params = (unique_id,)
@@ -64,11 +105,14 @@ def checkClient(request):
         if result == []:
             return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
         else:
-            email = result[0]['CLemail']
-            #return HttpResponse(json.dumps(us_record, indent=4), content_type="application/json")
-            return Response({"email": email, "device id": device_id, "message": "data found"})
+            #email = result[0]['CLemail']
+            #return Response({"email": email, "message": "data found"})
+            return HttpResponse(json.dumps(result, indent=4), content_type="application/json")
+
     else:
         return Response({"status": "error", "message": "data incomplete"}, status=status.HTTP_404_NOT_FOUND)
+
+
 
 @api_view(['GET'])
 def getClient(request, pk):
