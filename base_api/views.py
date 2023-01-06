@@ -9,10 +9,11 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Prclient
+from .models import Prclient, PrclientAPIKey
 from .serializers import ClientSerializer
 from client_api import settings
 import xml.etree.ElementTree as ET
+from .permissions import HasPrclientAPIKey
 
 # Create your views here.
 
@@ -35,6 +36,20 @@ connection = mysql.connector.connect(
 #cursor for execution of sql query
 cur = connection.cursor(dictionary=True)
 
+#create custom api key django
+@api_view()
+@permission_classes([AllowAny])
+def createClientApiKey(request,cid):
+    #client_data = Prclient.objects.get(cluniqueid=request.data['clientid'])
+    try:
+        client_data = Prclient.objects.get(cluniqueid=cid)
+    except Prclient.DoesNotExist:
+        return Response({"status": "error", "message": "invalid client id"}, status=status.HTTP_404_NOT_FOUND)
+
+    #api_key, key = PrclientAPIKey.objects.create_key(Prclient=client_data, cluniqueid=request.data['clientid'])
+    api_key, key = PrclientAPIKey.objects.create_key(client_key=client_data, name=cid)
+    return Response({'name':str(api_key), 'key': str(key)}, status=status.HTTP_201_CREATED)
+
 
 @api_view(['GET']) #place request type here e.g GET, PUT, POST
 def getRoutes(request):
@@ -46,12 +61,38 @@ def getRoutes(request):
     ]
     return Response(routes)
 
-#for database table created in django
+#for database table created in django and with api protection
 @api_view(['GET'])
+@permission_classes([HasPrclientAPIKey])
 def getClients(request):
     client = Prclient.objects.all()
     serializer = ClientSerializer(client, many=True)
     return Response(serializer.data)
+
+'''
+example of api call for the above thats working
+$curl = curl_init();
+
+curl_setopt_array($curl, array(
+  CURLOPT_URL => 'http://127.0.0.1:8000/clients/',
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_ENCODING => '',
+  CURLOPT_MAXREDIRS => 10,
+  CURLOPT_TIMEOUT => 0,
+  CURLOPT_FOLLOWLOCATION => true,
+  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+  CURLOPT_CUSTOMREQUEST => 'GET',
+  CURLOPT_HTTPHEADER => array(
+    'Authorization: Api-Key 05MwJyao.tBijLXQwmk7b39Uc3ZOLXrXmlPTM4YUx'
+  ),
+));
+
+$response = curl_exec($curl);
+
+curl_close($curl);
+echo $response;
+
+'''
 
 #for database table created outside django (XML version)
 @api_view(['GET'])

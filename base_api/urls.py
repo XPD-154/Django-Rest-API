@@ -11,4 +11,5 @@ urlpatterns = [
     path('update_client/<str:pk>', views.updateClient),
     path('delete_client/<str:pk>', views.deleteClient),
     path('login_test/', views.login_test),
+    path('api_key/<str:cid>', views.createClientApiKey),
 ]
