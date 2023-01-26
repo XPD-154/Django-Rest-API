@@ -2,6 +2,7 @@ from django.shortcuts import render
 import requests
 import json
 import mysql.connector
+from mysql.connector import Error
 from django.http import HttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -15,8 +16,6 @@ from client_api import settings
 import xml.etree.ElementTree as ET
 from .permissions import HasPrclientAPIKey
 
-# Create your views here.
-
 #needed variables
 device_id = settings.device_id
 callkit_token = settings.callkit_token
@@ -24,17 +23,27 @@ apns_token = settings.apns_token
 token = settings.token
 x_auth_token = settings.x_auth_token
 
+host = settings.host
+user = settings.user
+password = settings.password
+database = settings.database
+
+'''
 #connect to existing database
 connection = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="",
-    database="preq",
+    host=host,
+    user=user,
+    password=password,
+    database=database,
     autocommit=True
 )
 
 #cursor for execution of sql query
 cur = connection.cursor(dictionary=True)
+
+'''
+
+# Create your views here.
 
 #create custom api key django
 @api_view()
@@ -97,61 +106,90 @@ echo $response;
 #for database table created outside django (XML version)
 @api_view(['GET'])
 def checkClientXl(request):
-    unique_id = request.GET.get('unique_id', False);
 
-    if unique_id:
-        query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
-        params = (unique_id,)
-        cur.execute(query, params)
-        result = cur.fetchall()
+    try:
+      connection = mysql.connector.connect(
+          host=host,
+          user=user,
+          password=password,
+          database=database,
+          autocommit=True
+      )
+      cur = connection.cursor(dictionary=True)
 
-        if result == []:
-            data = f'<account><status>error</status><message>data not found</message></account>'
-            element = ET.XML(data)
-            ET.indent(element)
-            params = ET.tostring(element, encoding='unicode')
+      unique_id = request.GET.get('unique_id', False);
 
-            return HttpResponse(params, content_type="application/xml")
-        else:
-            email = result[0]['CLemail']
-            name = result[0]['CLcompany_name']
-            phone = result[0]['CLphone_number']
+      if unique_id:
+          query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
+          params = (unique_id,)
+          cur.execute(query, params)
+          result = cur.fetchall()
 
-            data = f'<account><name>{name}</name><phone>{phone}</phone><email>{email}</email></account>'
-            element = ET.XML(data)
-            ET.indent(element)
-            params = ET.tostring(element, encoding='unicode')
+          if result == []:
+              data = f'<account><status>error</status><message>data not found</message></account>'
+              element = ET.XML(data)
+              ET.indent(element)
+              params = ET.tostring(element, encoding='unicode')
 
-            return HttpResponse(params, content_type="application/xml")
-    else:
-        data = f'<account><status>error</status><message>incomplete data</message></account>'
-        element = ET.XML(data)
-        ET.indent(element)
-        params = ET.tostring(element, encoding='unicode')
+              return HttpResponse(params, content_type="application/xml")
+          else:
+              email = result[0]['CLemail']
+              name = result[0]['CLcompany_name']
+              phone = result[0]['CLphone_number']
 
-        return HttpResponse(params, content_type="application/xml")
+              data = f'<account><name>{name}</name><phone>{phone}</phone><email>{email}</email></account>'
+              element = ET.XML(data)
+              ET.indent(element)
+              params = ET.tostring(element, encoding='unicode')
 
+              return HttpResponse(params, content_type="application/xml")
+      else:
+          data = f'<account><status>error</status><message>incomplete data</message></account>'
+          element = ET.XML(data)
+          ET.indent(element)
+          params = ET.tostring(element, encoding='unicode')
+
+          return HttpResponse(params, content_type="application/xml")
+
+    except Error as e:
+        error_result = str(e)
+        return Response({"status": "error", "message": error_result}, status=status.HTTP_404_NOT_FOUND)
 
 #for database table created outside django (JSON version)
 @api_view(['GET'])
 def checkClientJs(request):
-    unique_id = request.GET.get('unique_id', False);
 
-    if unique_id:
-        query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
-        params = (unique_id,)
-        cur.execute(query, params)
-        result = cur.fetchall()
+    try:
+      connection = mysql.connector.connect(
+          host=host,
+          user=user,
+          password=password,
+          database=database,
+          autocommit=True
+      )
+      cur = connection.cursor(dictionary=True)
 
-        if result == []:
-            return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            #email = result[0]['CLemail']
-            #return Response({"email": email, "message": "data found"})
-            return HttpResponse(json.dumps(result, indent=4), content_type="application/json")
+      unique_id = request.GET.get('unique_id', False);
 
-    else:
-        return Response({"status": "error", "message": "data incomplete"}, status=status.HTTP_404_NOT_FOUND)
+      if unique_id:
+          query = """SELECT * FROM Prclient WHERE CLuniqueId = %s"""
+          params = (unique_id,)
+          cur.execute(query, params)
+          result = cur.fetchall()
+
+          if result == []:
+              return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
+          else:
+              #email = result[0]['CLemail']
+              #return Response({"email": email, "message": "data found"})
+              return HttpResponse(json.dumps(result, indent=4), content_type="application/json")
+
+      else:
+          return Response({"status": "error", "message": "data incomplete"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Error as e:
+        error_result = str(e)
+        return Response({"status": "error", "message": error_result}, status=status.HTTP_404_NOT_FOUND)
 
 
 
@@ -328,25 +366,30 @@ print "</pre>";
 '''
 
 #pass multiple parameters into url
+#http://127.0.0.1:8000/specific_client/?id=9&uid=cl009
 @api_view()
 @permission_classes([AllowAny])
 def getSpClient(request):
 
-    print(request.query_params)
-    print(request.query_params['id'])
+    #print(request.query_params)
+    #print(request.query_params['id'])
 
     SpClientId = request.GET.get('id', False);
     SpClientUId = request.GET.get('uid', False);
 
-    try:
-        Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
-    except Prclient.DoesNotExist:
-        return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
+    if SpClientId and SpClientUId:
+      try:
+          Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
+      except Prclient.DoesNotExist:
+          return Response({"status": "error", "message": "data not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    client = Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
-    serializer = ClientSerializer(client, many=False)
-    return Response(serializer.data)
+      client = Prclient.objects.get(clientid=SpClientId, cluniqueid=SpClientUId)
+      serializer = ClientSerializer(client, many=False)
+      return Response(serializer.data)
+    else:
+      return Response({"status": "error", "message": "incomplete data"}, status=status.HTTP_404_NOT_FOUND)
 
+#call API inside API
 @api_view()
 @permission_classes([AllowAny])
 def login_test(request):

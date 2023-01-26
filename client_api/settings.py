@@ -36,6 +36,11 @@ apns_token = config('apns_token')
 token = config('token')
 x_auth_token = config('x-auth-token')
 
+host=config('host')
+user=config('user')
+password=config('password')
+database=config('database')
+
 # Application definition
 
 INSTALLED_APPS = [
